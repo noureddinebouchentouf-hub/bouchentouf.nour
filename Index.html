@@ -1,0 +1,1488 @@
+<!DOCTYPE html>
+<html lang="fr" class="h-full bg-slate-50">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Holcim Oggaz - Gestion des Accès Sous-Traitants & Badges QR HSE</title>
+
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        holcim: {
+                            blue: '#005A9C',
+                            darkblue: '#003D6B',
+                            light: '#0284C7',
+                            accent: '#00A859',
+                            slate: '#F1F5F9'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- QRCode.js CDN for real-time browser QR code rendering -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+    <!-- SheetJS CDN for parsing Excel files (.xlsx, .xls, .csv) -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+    <style>
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 550px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 280px;
+            max-height: 320px;
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 300px;
+            }
+        }
+        /* Style spécifique pour la prévisualisation du badge 4x4 cm */
+        .badge-4x4 {
+            width: 151px; /* ~4cm à 96 DPI */
+            height: 151px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+    </style>
+</head>
+<!-- Chosen Palette: Holcim Industrial Blue (Primary: #005A9C, Secondary: #0284C7, Accent: #00A859 emerald, Neutral: #F8FAFC, Text: #1E293B) -->
+<!-- Application Structure Plan: 
+     1. Navigation Bar with Holcim branding & active status tabs.
+     2. Dashboard Section: Real-time KPIs, Chart.js repartition of workers by enterprise & period validity.
+     3. Nouveau module: Importation Excel & Parsing des dates au format DD/MM/YYYY.
+     4. Nouveau module: Gestion Temporelle des Périodes d'Accès (Du DD/MM/YYYY au DD/MM/YYYY).
+     5. Formulaire & Générateur de Badge QR (4x4 cm) vérifiant à la fois la validité HSE ET la période d'accès active.
+     6. Base de Données Registre avec fenêtre modale d'upload manuel des pièces jointes par agent.
+     7. Comparateur d'Architectures Techniques (Decision Matrix).
+     8. Guide de Procédure HSE.
+-->
+<!-- Visualization & Content Choices:
+     - Excel Import -> SheetJS integration -> Formatage automatique de toutes les dates saisies ou importées en DD/MM/YYYY.
+     - Document Manager Modal -> HTML file inputs & dynamic status badges -> Supports manual attaching of CNAS, Medical, Diplomas.
+     - Period Control -> Date Range logic comparison with DD/MM/YYYY visual badges.
+     - Live 4x4 Sticker Canvas -> Real-time display of company, worker info, valid period (DD/MM/YYYY) & HSE status code.
+     - NO SVG graphics used. NO Mermaid JS used. Emojis and standard HTML/CSS styling for icon graphics.
+-->
+<!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+
+<body class="flex flex-col min-h-screen text-slate-800 font-sans antialiased bg-slate-50">
+
+    <!-- TOP HEADER -->
+    <header class="bg-holcim-blue text-white shadow-md sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex items-center space-x-3">
+                    <div class="bg-white text-holcim-blue font-black rounded px-2.5 py-1 text-xl tracking-wider">
+                        HOLCIM
+                    </div>
+                    <div>
+                        <h1 class="text-lg font-bold leading-none">Usine d'Oggaz</h1>
+                        <p class="text-xs text-sky-200">Accès Sous-Traitants, Périodes d'Autorisation & Badges QR</p>
+                    </div>
+                </div>
+
+                <!-- Navigation Tabs -->
+                <nav class="hidden md:flex space-x-1" id="nav-tabs">
+                    <button onclick="switchTab('dashboard')" id="tab-dashboard" class="px-3 py-2 rounded-md text-xs lg:text-sm font-medium bg-holcim-darkblue text-white border-b-2 border-green-400">
+                        📊 Tableau de Bord
+                    </button>
+                    <button onclick="switchTab('import-excel')" id="tab-import-excel" class="px-3 py-2 rounded-md text-xs lg:text-sm font-medium hover:bg-sky-800 text-sky-100">
+                        📥 Import Excel
+                    </button>
+                    <button onclick="switchTab('periodes')" id="tab-periodes" class="px-3 py-2 rounded-md text-xs lg:text-sm font-medium hover:bg-sky-800 text-sky-100">
+                        📅 Périodes d'Accès
+                    </button>
+                    <button onclick="switchTab('nouveau-personnel')" id="tab-nouveau-personnel" class="px-3 py-2 rounded-md text-xs lg:text-sm font-medium hover:bg-sky-800 text-sky-100">
+                        ➕ Saisie & Badge QR
+                    </button>
+                    <button onclick="switchTab('registre')" id="tab-registre" class="px-3 py-2 rounded-md text-xs lg:text-sm font-medium hover:bg-sky-800 text-sky-100">
+                        📋 Registre Personnel
+                    </button>
+                    <button onclick="switchTab('comparateur-tech')" id="tab-comparateur-tech" class="px-3 py-2 rounded-md text-xs lg:text-sm font-medium hover:bg-sky-800 text-sky-100">
+                        💻 Tech Architecture
+                    </button>
+                </nav>
+
+                <div class="flex items-center space-x-2 text-xs bg-sky-900/60 px-3 py-1.5 rounded-full border border-sky-700">
+                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <span class="font-medium text-sky-100">Arrêt Four 2026 - Actif</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Mobile Nav Bar -->
+        <div class="md:hidden flex overflow-x-auto bg-holcim-darkblue px-2 py-2 text-xs space-x-1 border-t border-sky-800">
+            <button onclick="switchTab('dashboard')" class="px-3 py-1.5 rounded whitespace-nowrap bg-sky-700 text-white font-medium">Tableau de Bord</button>
+            <button onclick="switchTab('import-excel')" class="px-3 py-1.5 rounded whitespace-nowrap text-sky-100 hover:bg-sky-800">Import Excel</button>
+            <button onclick="switchTab('periodes')" class="px-3 py-1.5 rounded whitespace-nowrap text-sky-100 hover:bg-sky-800">Périodes d'Accès</button>
+            <button onclick="switchTab('nouveau-personnel')" class="px-3 py-1.5 rounded whitespace-nowrap text-sky-100 hover:bg-sky-800">Nouveau & QR</button>
+            <button onclick="switchTab('registre')" class="px-3 py-1.5 rounded whitespace-nowrap text-sky-100 hover:bg-sky-800">Registre</button>
+            <button onclick="switchTab('comparateur-tech')" class="px-3 py-1.5 rounded whitespace-nowrap text-sky-100 hover:bg-sky-800">Architectures</button>
+        </div>
+    </header>
+
+    <!-- MAIN CONTAINER -->
+    <main class="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+
+        <!-- ========================================== -->
+        <!-- SECTION 1: TABLEAU DE BORD & ANALYTICS     -->
+        <!-- ========================================== -->
+        <section id="sec-dashboard" class="space-y-6">
+            <!-- Section Intro -->
+            <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+                <h2 class="text-xl font-bold text-holcim-blue mb-1">Tableau de Bord des Accès & Conformité HSE</h2>
+                <p class="text-slate-600 text-sm">
+                    Ce panneau centralise le suivi global du personnel sous-traitant (SST), la répartition par entreprise, la validité temporelle des accès au format <span class="font-bold text-holcim-blue">DD/MM/YYYY</span> (Du ... au ...) et l'avancement des enregistrements de documents requis.
+                </p>
+            </div>
+
+            <!-- KPI Cards -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+                    <div>
+                        <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Agents Enregistrés</p>
+                        <h3 id="kpi-total" class="text-3xl font-black text-slate-800 mt-1">--</h3>
+                        <p class="text-xs text-slate-500 mt-1">Chantier Usine Oggaz</p>
+                    </div>
+                    <div class="w-12 h-12 rounded-lg bg-sky-100 text-holcim-blue flex items-center justify-center text-2xl">
+                        👷
+                    </div>
+                </div>
+
+                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+                    <div>
+                        <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Accès Valides Aujourd'hui</p>
+                        <h3 id="kpi-active-period" class="text-3xl font-black text-emerald-600 mt-1">--</h3>
+                        <p class="text-xs text-emerald-600 font-medium mt-1">Au <span id="kpi-today-date" class="font-bold font-mono">--/--/----</span></p>
+                    </div>
+                    <div class="w-12 h-12 rounded-lg bg-emerald-100 text-emerald-600 flex items-center justify-center text-2xl">
+                        📅
+                    </div>
+                </div>
+
+                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+                    <div>
+                        <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Induction HSE Validée</p>
+                        <h3 id="kpi-hse-ok" class="text-3xl font-black text-holcim-blue mt-1">--</h3>
+                        <p class="text-xs text-sky-600 font-medium mt-1"><span id="kpi-hse-pct">--</span>% de l'effectif</p>
+                    </div>
+                    <div class="w-12 h-12 rounded-lg bg-sky-100 text-holcim-blue flex items-center justify-center text-2xl">
+                        🛡️
+                    </div>
+                </div>
+
+                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+                    <div>
+                        <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Accès Expirés / Rejetés</p>
+                        <h3 id="kpi-expired" class="text-3xl font-black text-rose-600 mt-1">--</h3>
+                        <p class="text-xs text-rose-600 font-medium mt-1">Période dépassée ou HSE bloqué</p>
+                    </div>
+                    <div class="w-12 h-12 rounded-lg bg-rose-100 text-rose-600 flex items-center justify-center text-2xl">
+                        ⛔
+                    </div>
+                </div>
+            </div>
+
+            <!-- Visualizations Grid -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- Chart 1: Entreprises Breakdown -->
+                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between mb-2">
+                            <h3 class="font-bold text-slate-800 text-base">Effectifs par Entreprise & Statut HSE</h3>
+                            <span class="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded">Répartition</span>
+                        </div>
+                        <p class="text-xs text-slate-500 mb-4">Proportion du personnel par sous-traitant ayant franchi l'induction sécurité.</p>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="chartEntreprises"></canvas>
+                    </div>
+                </div>
+
+                <!-- Chart 2: Document Conformity -->
+                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between mb-2">
+                            <h3 class="font-bold text-slate-800 text-base">Complétude des Documents Requis</h3>
+                            <span class="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded">Gestion Manuelle</span>
+                        </div>
+                        <p class="text-xs text-slate-500 mb-4">Taux de présence des fichiers joints (Certificat Médical, CNAS, Diplôme) enregistrés.</p>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="chartDocuments"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Action Banner -->
+            <div class="bg-gradient-to-r from-holcim-blue to-sky-700 text-white rounded-xl p-6 shadow-md flex flex-col md:flex-row items-center justify-between gap-4">
+                <div>
+                    <h3 class="text-lg font-bold">Vous avez reçu une liste sous-traitant au format Excel ?</h3>
+                    <p class="text-sky-100 text-sm mt-1">Importez directement le fichier `.xlsx` ou `.csv` fourni par le prestataire. Les dates au format `DD/MM/YYYY` sont automatiquement reconnues.</p>
+                </div>
+                <button onclick="switchTab('import-excel')" class="bg-emerald-500 hover:bg-emerald-600 text-white font-bold px-5 py-2.5 rounded-lg transition shadow-sm whitespace-nowrap text-sm flex items-center gap-2">
+                    <span>📥 Importer la BD Excel</span>
+                </button>
+            </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- SECTION 2: IMPORTATION EXCEL LOGIQUE       -->
+        <!-- ========================================== -->
+        <section id="sec-import-excel" class="hidden space-y-6">
+            <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+                <h2 class="text-xl font-bold text-holcim-blue mb-1">Importation des Listes Sous-Traitants depuis Excel</h2>
+                <p class="text-slate-600 text-sm">
+                    Les fournisseurs envoient leurs bases de données au format Excel (`.xlsx`, `.xls` ou `.csv`). Importez le fichier pour charger automatiquement l'ensemble des agents. Les dates d'accès sont converties et affichées en format standardisé <span class="font-bold text-holcim-blue">DD/MM/YYYY</span>.
+                </p>
+            </div>
+
+            <!-- Drag & Drop Zone -->
+            <div class="bg-white p-8 rounded-xl border-2 border-dashed border-sky-300 text-center space-y-4 hover:border-holcim-blue transition">
+                <div class="text-5xl text-sky-500">📊</div>
+                <div>
+                    <h3 class="text-lg font-bold text-slate-800">Glissez-déposez votre fichier Excel ici</h3>
+                    <p class="text-xs text-slate-500 mt-1">Formats acceptés : `.xlsx`, `.xls`, `.csv` (Reconnaissance automatique des dates `DD/MM/YYYY` ou `YYYY-MM-DD`)</p>
+                </div>
+                <div class="flex justify-center items-center gap-3">
+                    <label class="cursor-pointer bg-holcim-blue hover:bg-holcim-darkblue text-white font-bold px-5 py-2.5 rounded-lg text-sm shadow transition inline-flex items-center gap-2">
+                        <span>📁 Parcourir le Fichier Excel</span>
+                        <input type="file" id="excel-file-input" accept=".xlsx, .xls, .csv" class="hidden" onchange="handleExcelImport(event)">
+                    </label>
+                    <button onclick="loadSampleExcelData()" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold px-4 py-2.5 rounded-lg text-sm transition">
+                        ⚡ Charger Exemple Holcim
+                    </button>
+                </div>
+            </div>
+
+            <!-- Preview Table of Excel Rows -->
+            <div id="excel-preview-container" class="hidden bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
+                <div class="flex items-center justify-between border-b border-slate-200 pb-3">
+                    <div>
+                        <h3 class="font-bold text-slate-800 text-base">Données Détectées dans le Fichier</h3>
+                        <p class="text-xs text-slate-500"><span id="excel-row-count" class="font-bold text-holcim-blue">0</span> travailleurs prêts à être injectés dans la base d'Oggaz</p>
+                    </div>
+                    <button onclick="confirmExcelImport()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-5 py-2 rounded-lg text-sm shadow transition">
+                        ✅ Valider & Enregistrer dans la Base
+                    </button>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse text-xs">
+                        <thead>
+                            <tr class="bg-slate-100 border-b border-slate-200 text-slate-700 font-bold uppercase">
+                                <th class="p-2.5">Nom</th>
+                                <th class="p-2.5">Prénom</th>
+                                <th class="p-2.5">Père / Mère</th>
+                                <th class="p-2.5">Entreprise</th>
+                                <th class="p-2.5">N° CNAS</th>
+                                <th class="p-2.5">Période d'Accès (DD/MM/YYYY)</th>
+                                <th class="p-2.5">Induction HSE</th>
+                            </tr>
+                        </thead>
+                        <tbody id="excel-preview-body" class="divide-y divide-slate-200 font-mono">
+                            <!-- Populated dynamically via JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- SECTION 3: GESTION TEMPORELLE DES PERIODES -->
+        <!-- ========================================== -->
+        <section id="sec-periodes" class="hidden space-y-6">
+            <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+                <h2 class="text-xl font-bold text-holcim-blue mb-1">Gestion des Périodes d'Accès Sous-Traitants (DD/MM/YYYY)</h2>
+                <p class="text-slate-600 text-sm">
+                    Contrôlez et prolongez les autorisations d'accès au chantier d'Oggaz selon les plannings d'interventions et les fenêtres d'arrêt de four. Tout badge hors période sera automatiquement refusé au poste de garde.
+                </p>
+            </div>
+
+            <!-- Batch Operations Bar -->
+            <div class="bg-sky-50 border border-sky-200 p-4 rounded-xl flex flex-col md:flex-row items-center justify-between gap-4">
+                <div class="space-y-1">
+                    <h3 class="font-bold text-slate-800 text-sm">📅 Prolonger / Modifier la Période par Entreprise</h3>
+                    <p class="text-xs text-slate-600">Sélectionnez une entreprise sous-traitante pour appliquer une nouvelle fenêtre de travail (format affiché DD/MM/YYYY).</p>
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                    <select id="batch-company-select" class="px-3 py-1.5 border border-slate-300 rounded text-xs bg-white font-medium focus:outline-none">
+                        <!-- Populated by JS -->
+                    </select>
+                    <span class="text-xs text-slate-600 font-semibold">Du</span>
+                    <input type="date" id="batch-start-date" class="px-2 py-1 border border-slate-300 rounded text-xs bg-white">
+                    <span class="text-xs text-slate-600 font-semibold">au</span>
+                    <input type="date" id="batch-end-date" class="px-2 py-1 border border-slate-300 rounded text-xs bg-white">
+                    <button onclick="applyBatchDates()" class="bg-holcim-blue hover:bg-holcim-darkblue text-white font-bold px-3 py-1.5 rounded text-xs transition">
+                        Appliquer Modification
+                    </button>
+                </div>
+            </div>
+
+            <!-- Periods Control Table -->
+            <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                <div class="p-4 border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                    <h3 class="font-bold text-slate-800 text-base">État des Autorisations Temporelles au <span id="current-date-display" class="text-holcim-blue font-mono font-bold">--/--/----</span></h3>
+                    <div class="flex items-center space-x-2">
+                        <select id="filter-period-status" onchange="renderPeriodTable()" class="px-3 py-1.5 border border-slate-300 rounded text-xs bg-white">
+                            <option value="ALL">Tous les états temporels</option>
+                            <option value="ACTIVE">Accès Actifs aujourd'hui</option>
+                            <option value="EXPIRED">Accès Expirés</option>
+                            <option value="FUTURE">Accès Futurs (À venir)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse text-xs">
+                        <thead>
+                            <tr class="bg-slate-100 border-b border-slate-200 text-slate-700 font-bold uppercase">
+                                <th class="p-3">Agent</th>
+                                <th class="p-3">Entreprise</th>
+                                <th class="p-3">Date Début (DD/MM/YYYY)</th>
+                                <th class="p-3">Date Fin (DD/MM/YYYY)</th>
+                                <th class="p-3">Jours Restants</th>
+                                <th class="p-3">Statut Temporel</th>
+                                <th class="p-3 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="table-period-body" class="divide-y divide-slate-200">
+                            <!-- Populated dynamically via JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- SECTION 4: FORMULAIRE & BADGE QR 4X4 CM    -->
+        <!-- ========================================== -->
+        <section id="sec-nouveau-personnel" class="hidden space-y-6">
+            <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+                <h2 class="text-xl font-bold text-holcim-blue mb-1">Saisie Manuelle & Générateur de Badge QR (Format 4x4 cm)</h2>
+                <p class="text-slate-600 text-sm">
+                    Ce formulaire permet la création individuelle d'un agent. Les dates d'autorisation sont traitées au format <span class="font-bold text-holcim-blue">DD/MM/YYYY</span>. **Le QR code vérifie automatiquement deux conditions de sécurité :** l'induction HSE validée ET une période d'accès en cours d'autorisation.
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                <!-- Registration Form -->
+                <div class="lg:col-span-7 bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                    <form id="form-worker" onsubmit="event.preventDefault(); handleFormSubmit();" class="space-y-5">
+                        
+                        <!-- Personal Info Group -->
+                        <div>
+                            <h3 class="text-sm font-bold text-holcim-blue uppercase tracking-wider border-b border-slate-200 pb-2 mb-3 flex items-center gap-2">
+                                <span>👤 Identité du Travailleur</span>
+                            </h3>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-700 mb-1">Nom *</label>
+                                    <input type="text" id="input-nom" required placeholder="ex: BENALI" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-holcim-blue focus:outline-none uppercase">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-700 mb-1">Prénom *</label>
+                                    <input type="text" id="input-prenom" required placeholder="ex: Mohamed" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-holcim-blue focus:outline-none">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-700 mb-1">Fils de (Père)</label>
+                                    <input type="text" id="input-pere" placeholder="Nom du père" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-holcim-blue focus:outline-none">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-700 mb-1">Et de (Mère)</label>
+                                    <input type="text" id="input-mere" placeholder="Nom & prénom mère" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-holcim-blue focus:outline-none">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-700 mb-1">Date de Naissance <span class="text-slate-400 font-normal">(JJ/MM/AAAA)</span></label>
+                                    <input type="date" id="input-date-naiss" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-holcim-blue focus:outline-none">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-700 mb-1">Lieu de Naissance</label>
+                                    <input type="text" id="input-lieu-naiss" placeholder="ex: Sig / Mascara" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-holcim-blue focus:outline-none">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-700 mb-1">Adresse Résidence</label>
+                                    <input type="text" id="input-adresse" placeholder="Cité, Ville" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-holcim-blue focus:outline-none">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-700 mb-1">N° Téléphone</label>
+                                    <input type="tel" id="input-tel" placeholder="06XX XX XX XX" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-holcim-blue focus:outline-none">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Professional Info & Access Period -->
+                        <div>
+                            <h3 class="text-sm font-bold text-holcim-blue uppercase tracking-wider border-b border-slate-200 pb-2 mb-3 flex items-center gap-2">
+                                <span>🏢 Entreprise & Période d'Accès Chantier</span>
+                            </h3>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-700 mb-1">Entreprise Sous-Traitante *</label>
+                                    <input type="text" id="input-entreprise" required placeholder="ex: SOMACER, SARL MEA..." class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-holcim-blue focus:outline-none uppercase">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-700 mb-1">N° Sécurité Sociale (CNAS)</label>
+                                    <input type="text" id="input-cnas-num" placeholder="N° Immatriculation CNAS" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-holcim-blue focus:outline-none">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-700 mb-1">Date Début Autorisation * <span class="text-slate-400 font-normal">(JJ/MM/AAAA)</span></label>
+                                    <input type="date" id="input-date-debut" required onchange="previewBadgeFromForm()" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-holcim-blue focus:outline-none">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-700 mb-1">Date Fin Autorisation * <span class="text-slate-400 font-normal">(JJ/MM/AAAA)</span></label>
+                                    <input type="date" id="input-date-fin" required onchange="previewBadgeFromForm()" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-holcim-blue focus:outline-none">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Manual Document Files Upload -->
+                        <div>
+                            <h3 class="text-sm font-bold text-holcim-blue uppercase tracking-wider border-b border-slate-200 pb-2 mb-3 flex items-center gap-2">
+                                <span>📄 Pièces Réglementaires Enregistrées</span>
+                            </h3>
+                            <div class="space-y-2 text-xs">
+                                <div class="flex items-center justify-between p-2 bg-slate-50 border border-slate-200 rounded-lg">
+                                    <span class="font-medium text-slate-700">1. Certificat Médical d'Aptitude</span>
+                                    <label class="cursor-pointer bg-slate-200 hover:bg-slate-300 text-slate-700 px-2.5 py-1 rounded font-semibold text-xs transition">
+                                        <input type="file" id="file-cert" class="hidden" onchange="updateFileLabel('file-cert', 'lbl-cert')">
+                                        <span id="lbl-cert">📎 Joindre Fichier</span>
+                                    </label>
+                                </div>
+                                <div class="flex items-center justify-between p-2 bg-slate-50 border border-slate-200 rounded-lg">
+                                    <span class="font-medium text-slate-700">2. Attestation d'Affiliation CNAS</span>
+                                    <label class="cursor-pointer bg-slate-200 hover:bg-slate-300 text-slate-700 px-2.5 py-1 rounded font-semibold text-xs transition">
+                                        <input type="file" id="file-cnas" class="hidden" onchange="updateFileLabel('file-cnas', 'lbl-cnas')">
+                                        <span id="lbl-cnas">📎 Joindre Fichier</span>
+                                    </label>
+                                </div>
+                                <div class="flex items-center justify-between p-2 bg-slate-50 border border-slate-200 rounded-lg">
+                                    <span class="font-medium text-slate-700">3. Diplôme / Attestation de Qualification</span>
+                                    <label class="cursor-pointer bg-slate-200 hover:bg-slate-300 text-slate-700 px-2.5 py-1 rounded font-semibold text-xs transition">
+                                        <input type="file" id="file-dip" class="hidden" onchange="updateFileLabel('file-dip', 'lbl-dip')">
+                                        <span id="lbl-dip">📎 Joindre Fichier</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- HSE Gatekeeper Checkbox -->
+                        <div class="p-4 bg-amber-50 border-2 border-amber-300 rounded-xl">
+                            <label class="flex items-start space-x-3 cursor-pointer">
+                                <input type="checkbox" id="check-hse" onchange="previewBadgeFromForm()" class="mt-1 h-5 w-5 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500">
+                                <div>
+                                    <span class="font-bold text-sm text-slate-900 block">Induction HSE Achevée & Validée</span>
+                                    <span class="text-xs text-slate-600">Le responsable HSE Holcim confirme la formation sécurité. Obligatoire pour la délivrance du QR.</span>
+                                </div>
+                            </label>
+                        </div>
+
+                        <!-- Buttons -->
+                        <div class="flex items-center space-x-3 pt-2">
+                            <button type="submit" class="flex-1 bg-holcim-blue hover:bg-holcim-darkblue text-white font-bold py-2.5 px-4 rounded-lg shadow transition text-sm flex items-center justify-center gap-2">
+                                <span>💾 Enregistrer l'Agent</span>
+                            </button>
+                            <button type="button" onclick="previewBadgeFromForm()" class="bg-amber-500 hover:bg-amber-600 text-white font-bold py-2.5 px-4 rounded-lg shadow transition text-sm flex items-center justify-center gap-2">
+                                <span>🖨️ Générer Badge 4x4</span>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Badge 4x4 cm Live Preview & Sticker Generator -->
+                <div class="lg:col-span-5 space-y-4">
+                    <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col items-center justify-center text-center">
+                        <h3 class="font-bold text-slate-800 text-base mb-1">Aperçu du Badge QR Autocollant</h3>
+                        <p class="text-xs text-slate-500 mb-4">Format d'impression : **4.0 cm x 4.0 cm** sur étiquette thermique.</p>
+
+                        <!-- The 4x4 cm visual sticker box -->
+                        <div id="badge-sticker" class="badge-4x4 bg-white border-2 border-slate-800 rounded p-1 flex flex-col items-center justify-between relative bg-gradient-to-b from-white via-white to-slate-50 select-none">
+                            
+                            <!-- Header badge -->
+                            <div class="w-full text-center border-b border-slate-300 pb-0.5">
+                                <div class="text-[8px] font-black tracking-tighter text-holcim-blue leading-none">HOLCIM OGGAZ</div>
+                                <div class="text-[6.5px] text-slate-600 leading-none mt-0.5">SOUS-TRAITANT AUTORISÉ</div>
+                            </div>
+
+                            <!-- QR Canvas container -->
+                            <div class="my-0.5 flex items-center justify-center">
+                                <div id="qrcode-container" class="p-0.5 bg-white rounded"></div>
+                            </div>
+
+                            <!-- Footer info on badge -->
+                            <div class="w-full text-center border-t border-slate-300 pt-0.5">
+                                <div id="badge-worker-name" class="text-[7.5px] font-bold text-slate-900 truncate max-w-[135px]">NOM PRENOM</div>
+                                <div id="badge-worker-entreprise" class="text-[6.5px] text-slate-600 truncate max-w-[135px]">ENTREPRISE</div>
+                                <div id="badge-worker-period" class="text-[6px] font-mono text-slate-500 mt-0.5">Du --/--/---- au --/--/----</div>
+                                <div id="badge-hse-tag" class="text-[6px] font-bold text-emerald-700 uppercase tracking-widest">HSE VALIDE</div>
+                            </div>
+
+                            <!-- Lock overlay for invalid period or missing HSE -->
+                            <div id="badge-lock-overlay" class="hidden absolute inset-0 bg-slate-900/85 backdrop-blur-[1px] flex flex-col items-center justify-center p-2 text-white rounded">
+                                <span class="text-2xl mb-1">🚫</span>
+                                <span id="lock-reason-title" class="text-[9px] font-bold text-rose-300">ACCÈS BLOQUÉ</span>
+                                <span id="lock-reason-desc" class="text-[7px] text-slate-200 mt-0.5">Induction HSE non effectuée</span>
+                            </div>
+                        </div>
+
+                        <!-- Print Controls -->
+                        <div class="mt-6 w-full space-y-2">
+                            <button onclick="printSticker()" id="btn-print-badge" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-lg text-sm shadow transition flex items-center justify-center gap-2">
+                                <span>🖨️ Imprimer l'Étiquette 4x4 cm</span>
+                            </button>
+                            <p class="text-[11px] text-slate-500">
+                                Impression configurée à 100% échelle pour rouleaux d'étiquettes thermiques.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Scan Test Simulation Box -->
+                    <div class="bg-slate-800 text-white p-5 rounded-xl shadow-sm space-y-3">
+                        <div class="flex items-center space-x-2">
+                            <span class="text-lg">📱</span>
+                            <h4 class="font-bold text-sm text-sky-300">Scanner Porte de Garde (Lecture QR)</h4>
+                        </div>
+                        <p class="text-xs text-slate-300">
+                            Chaîne encodée lue par le lecteur d'accès à l'entrée de la cimenterie :
+                        </p>
+                        <div id="qr-raw-output" class="bg-slate-900 p-2.5 rounded border border-slate-700 font-mono text-xs text-emerald-400 break-all">
+                            HOLCIM-OGGAZ|ID:N/A|HSE:BLOCAGE|PERIODE:INVALID
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- SECTION 5: REGISTRE & DEDICATED DOCS MODAL -->
+        <!-- ========================================== -->
+        <section id="sec-registre" class="hidden space-y-6">
+            <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                    <h2 class="text-xl font-bold text-holcim-blue mb-1">Registre Central du Personnel Sous-Traitant</h2>
+                    <p class="text-slate-600 text-sm">
+                        Base de données des agents. Les périodes d'accès sont présentées en format standardisé <span class="font-bold text-holcim-blue">DD/MM/YYYY</span>.
+                    </p>
+                </div>
+                <!-- Search & Filters -->
+                <div class="flex flex-wrap items-center gap-2">
+                    <input type="text" id="search-worker" onkeyup="filterWorkerTable()" placeholder="🔍 Nom, entreprise..." class="px-3 py-1.5 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-holcim-blue focus:outline-none">
+                    <select id="filter-hse" onchange="filterWorkerTable()" class="px-3 py-1.5 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-holcim-blue focus:outline-none">
+                        <option value="ALL">Tous statuts HSE</option>
+                        <option value="VAL">HSE Validé</option>
+                        <option value="PENDING">En attente HSE</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Data Table -->
+            <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse text-xs">
+                        <thead>
+                            <tr class="bg-slate-100 border-b border-slate-200 text-slate-700 font-bold uppercase tracking-wider">
+                                <th class="p-3">ID</th>
+                                <th class="p-3">Nom & Prénom</th>
+                                <th class="p-3">Père / Mère</th>
+                                <th class="p-3">Entreprise</th>
+                                <th class="p-3">Période d'Accès (DD/MM/YYYY)</th>
+                                <th class="p-3">Pièces Jointes</th>
+                                <th class="p-3">Statut HSE</th>
+                                <th class="p-3 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="table-workers-body" class="divide-y divide-slate-200">
+                            <!-- Populated dynamically via JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- MODAL FOR MANUAL DOCUMENT UPLOAD / MANAGEMENT PER WORKER -->
+        <div id="modal-docs" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div class="bg-white rounded-xl max-w-lg w-full p-6 shadow-2xl space-y-4 border border-slate-200">
+                <div class="flex items-center justify-between border-b border-slate-200 pb-3">
+                    <div>
+                        <h3 class="font-bold text-slate-900 text-base">Gestion Manuelle des Documents</h3>
+                        <p id="modal-worker-title" class="text-xs text-holcim-blue font-bold">Agent : --</p>
+                    </div>
+                    <button onclick="closeDocsModal()" class="text-slate-400 hover:text-slate-600 font-bold text-lg">✕</button>
+                </div>
+
+                <div class="space-y-3 text-xs">
+                    <div class="p-3 border border-slate-200 rounded-lg bg-slate-50 space-y-2">
+                        <div class="flex items-center justify-between font-bold text-slate-800">
+                            <span>🩺 Certificat Médical d'Aptitude</span>
+                            <span id="doc-status-med" class="text-[10px] px-2 py-0.5 rounded bg-slate-200">Non fourni</span>
+                        </div>
+                        <input type="file" id="modal-file-med" onchange="attachModalDoc('certMed', 'modal-file-med')" class="w-full text-xs text-slate-500 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-sky-100 file:text-holcim-blue hover:file:bg-sky-200">
+                    </div>
+
+                    <div class="p-3 border border-slate-200 rounded-lg bg-slate-50 space-y-2">
+                        <div class="flex items-center justify-between font-bold text-slate-800">
+                            <span>📄 Attestation d'Affiliation CNAS</span>
+                            <span id="doc-status-cnas" class="text-[10px] px-2 py-0.5 rounded bg-slate-200">Non fourni</span>
+                        </div>
+                        <input type="file" id="modal-file-cnas" onchange="attachModalDoc('cnasDoc', 'modal-file-cnas')" class="w-full text-xs text-slate-500 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-sky-100 file:text-holcim-blue hover:file:bg-sky-200">
+                    </div>
+
+                    <div class="p-3 border border-slate-200 rounded-lg bg-slate-50 space-y-2">
+                        <div class="flex items-center justify-between font-bold text-slate-800">
+                            <span>🎓 Diplôme / Attestation de Qualification</span>
+                            <span id="doc-status-dip" class="text-[10px] px-2 py-0.5 rounded bg-slate-200">Non fourni</span>
+                        </div>
+                        <input type="file" id="modal-file-dip" onchange="attachModalDoc('diplomeDoc', 'modal-file-dip')" class="w-full text-xs text-slate-500 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-sky-100 file:text-holcim-blue hover:file:bg-sky-200">
+                    </div>
+                </div>
+
+                <div class="pt-3 border-t border-slate-200 flex justify-end">
+                    <button onclick="closeDocsModal()" class="bg-holcim-blue text-white font-bold px-4 py-2 rounded-lg text-xs shadow">
+                        Terminer & Enregistrer
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ========================================== -->
+        <!-- SECTION 6: COMPARATEUR ARCHITECTURE        -->
+        <!-- ========================================== -->
+        <section id="sec-comparateur-tech" class="hidden space-y-6">
+            <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+                <h2 class="text-xl font-bold text-holcim-blue mb-1">Évaluation des Technologies & Architectures Logicielles</h2>
+                <p class="text-slate-600 text-sm">
+                    Aide à la décision technique pour le département SI et HSE d'Oggaz.
+                </p>
+            </div>
+
+            <!-- Architecture Comparison Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div class="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
+                    <h3 class="font-bold text-slate-900 text-sm mb-1">1. C# (.NET / WPF)</h3>
+                    <p class="text-xs text-slate-500 mb-2">Standard industriel bureau sur PC unique.</p>
+                    <span class="text-[10px] bg-blue-100 text-blue-800 font-bold px-2 py-0.5 rounded">Robuste Hors-Ligne</span>
+                </div>
+                <div class="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
+                    <h3 class="font-bold text-slate-900 text-sm mb-1">2. Web Intranet (HTML/JS)</h3>
+                    <p class="text-xs text-slate-500 mb-2">Hébergé sur le serveur usine local d'Oggaz.</p>
+                    <span class="text-[10px] bg-purple-100 text-purple-800 font-bold px-2 py-0.5 rounded">Multi-Postes Usine</span>
+                </div>
+                <div class="bg-white rounded-xl border border-slate-200 p-5 shadow-sm border-2 border-holcim-blue">
+                    <h3 class="font-bold text-slate-900 text-sm mb-1">3. Python (Tkinter/SQLite)</h3>
+                    <p class="text-xs text-slate-500 mb-2">Application autonome rapide à déployer.</p>
+                    <span class="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded">Opérationnel</span>
+                </div>
+                <div class="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
+                    <h3 class="font-bold text-slate-900 text-sm mb-1">4. Google Apps Script</h3>
+                    <p class="text-xs text-slate-500 mb-2">Google Sheets + Drive Cloud.</p>
+                    <span class="text-[10px] bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded">Requiert Internet</span>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- FOOTER -->
+    <footer class="bg-slate-800 text-slate-400 text-xs py-4 border-t border-slate-700 mt-auto">
+        <div class="max-w-7xl mx-auto px-4 text-center space-y-1">
+            <p>© 2026 Holcim Oggaz - Direction Santé, Sécurité & Environnement (HSE) & IT</p>
+            <p class="text-slate-500">Plateforme de Gestion des Accès Sous-Traitants & Induction Arrêts de Four</p>
+        </div>
+    </footer>
+
+    <!-- JAVASCRIPT LOGIC -->
+    <script>
+        // Set fixed current reference date (March 12, 2026 for Kiln Shutdown simulation)
+        const TODAY = "2026-03-12";
+
+        // ==========================================
+        // BASE DATA STORAGE (INITIAL DATABASE)
+        // ==========================================
+        let workerDatabase = [
+            {
+                id: 101,
+                nom: "BENALI",
+                prenom: "Mohamed",
+                pere: "Kaddour",
+                mere: "Fatima Zohra",
+                dateNaiss: "1988-05-12",
+                lieuNaiss: "Sig",
+                adresse: "Cité 200 Logements",
+                tel: "0661234567",
+                entreprise: "SOMACER",
+                cnas: "2984756312",
+                dateDebut: "2026-03-01",
+                dateFin: "2026-03-30",
+                certMed: true,
+                cnasDoc: true,
+                diplomeDoc: true,
+                hseValide: true
+            },
+            {
+                id: 102,
+                nom: "AMRANI",
+                prenom: "Yassine",
+                pere: "Ahmed",
+                mere: "Khadija",
+                dateNaiss: "1992-09-20",
+                lieuNaiss: "Mascara",
+                adresse: "Centre ville",
+                tel: "0554129833",
+                entreprise: "SARL MEA",
+                cnas: "3104958821",
+                dateDebut: "2026-03-05",
+                dateFin: "2026-03-25",
+                certMed: true,
+                cnasDoc: true,
+                diplomeDoc: false,
+                hseValide: true
+            },
+            {
+                id: 103,
+                nom: "BOUKHIAR",
+                prenom: "Mustapha",
+                pere: "Ali",
+                mere: "Aicha",
+                dateNaiss: "1985-01-14",
+                lieuNaiss: "Oran",
+                adresse: "Es Senia",
+                tel: "0771928374",
+                entreprise: "SOMACER",
+                cnas: "2977463920",
+                dateDebut: "2026-02-01",
+                dateFin: "2026-03-05", // EXPIRED PERIOD
+                certMed: true,
+                cnasDoc: false,
+                diplomeDoc: true,
+                hseValide: false
+            },
+            {
+                id: 104,
+                nom: "MOHAMMEDI",
+                prenom: "Oussama",
+                pere: "Omar",
+                mere: "Zohra",
+                dateNaiss: "1995-11-03",
+                lieuNaiss: "Oggaz",
+                adresse: "Village Oggaz",
+                tel: "0669112233",
+                entreprise: "ORAN ELEVAGE",
+                cnas: "3129840192",
+                dateDebut: "2026-03-10",
+                dateFin: "2026-04-10",
+                certMed: true,
+                cnasDoc: true,
+                diplomeDoc: true,
+                hseValide: true
+            }
+        ];
+
+        let pendingExcelParsedData = [];
+        let activeModalWorkerId = null;
+
+        // Dynamic Chart Objects
+        let chartEntreprisesObj = null;
+        let chartDocumentsObj = null;
+        let qrCodeObj = null;
+
+        // ==========================================
+        // INITIALIZATION
+        // ==========================================
+        document.addEventListener("DOMContentLoaded", () => {
+            const todayFormatted = formatDateFR(TODAY);
+            document.getElementById('current-date-display').innerText = todayFormatted;
+            document.getElementById('kpi-today-date').innerText = todayFormatted;
+
+            initQrCodeCanvas();
+            renderWorkerTable();
+            renderPeriodTable();
+            populateCompanySelects();
+            updateKPIs();
+            initCharts();
+            
+            // Set default dates in form inputs (HTML5 inputs need YYYY-MM-DD format internally)
+            document.getElementById('input-date-debut').value = TODAY;
+            document.getElementById('input-date-fin').value = "2026-03-31";
+            document.getElementById('batch-start-date').value = TODAY;
+            document.getElementById('batch-end-date').value = "2026-03-31";
+        });
+
+        // ==========================================
+        // ROBUST DATE FORMATTER FOR DD/MM/YYYY
+        // ==========================================
+        function formatDateFR(dateStr) {
+            if (!dateStr) return "--/--/----";
+            dateStr = String(dateStr).trim();
+
+            // If string already contains slashes DD/MM/YYYY or YYYY/MM/DD
+            if (dateStr.includes('/')) {
+                const parts = dateStr.split('/');
+                if (parts.length === 3) {
+                    if (parts[0].length === 4) { // YYYY/MM/DD
+                        return `${parts[2].padStart(2, '0')}/${parts[1].padStart(2, '0')}/${parts[0]}`;
+                    }
+                    return `${parts[0].padStart(2, '0')}/${parts[1].padStart(2, '0')}/${parts[2]}`;
+                }
+            }
+
+            // If string contains hyphens YYYY-MM-DD or DD-MM-YYYY
+            if (dateStr.includes('-')) {
+                const parts = dateStr.split('-');
+                if (parts.length === 3) {
+                    if (parts[0].length === 4) { // YYYY-MM-DD
+                        return `${parts[2].padStart(2, '0')}/${parts[1].padStart(2, '0')}/${parts[0]}`;
+                    }
+                    return `${parts[0].padStart(2, '0')}/${parts[1].padStart(2, '0')}/${parts[2]}`;
+                }
+            }
+
+            return dateStr;
+        }
+
+        // Convert any date string (DD/MM/YYYY or YYYY-MM-DD) into YYYY-MM-DD for standard Javascript date comparisons
+        function parseToIsoDate(dateStr) {
+            if (!dateStr) return "";
+            dateStr = String(dateStr).trim();
+            if (dateStr.includes('/')) {
+                const parts = dateStr.split('/');
+                if (parts.length === 3) {
+                    if (parts[0].length === 4) return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+                    return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+                }
+            }
+            if (dateStr.includes('-')) {
+                const parts = dateStr.split('-');
+                if (parts.length === 3) {
+                    if (parts[0].length === 4) return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+                    return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+                }
+            }
+            return dateStr;
+        }
+
+        function getPeriodStatus(dateDebut, dateFin) {
+            const isoStart = parseToIsoDate(dateDebut);
+            const isoEnd = parseToIsoDate(dateFin);
+
+            if (!isoStart || !isoEnd) return { code: 'INVALID', label: 'Dates absentes', color: 'bg-slate-100 text-slate-700' };
+            if (TODAY < isoStart) return { code: 'FUTURE', label: 'À venir', color: 'bg-sky-100 text-sky-800' };
+            if (TODAY > isoEnd) return { code: 'EXPIRED', label: 'Période Expirée', color: 'bg-rose-100 text-rose-800' };
+            return { code: 'ACTIVE', label: 'Période Valide', color: 'bg-emerald-100 text-emerald-800' };
+        }
+
+        // ==========================================
+        // NAVIGATION SYSTEM
+        // ==========================================
+        function switchTab(tabId) {
+            const sections = ['dashboard', 'import-excel', 'periodes', 'nouveau-personnel', 'registre', 'comparateur-tech'];
+            sections.forEach(sec => {
+                const el = document.getElementById(`sec-${sec}`);
+                if (el) el.classList.add('hidden');
+                
+                const tabBtn = document.getElementById(`tab-${sec}`);
+                if (tabBtn) {
+                    tabBtn.classList.remove('bg-holcim-darkblue', 'text-white', 'border-b-2', 'border-green-400');
+                    tabBtn.classList.add('hover:bg-sky-800', 'text-sky-100');
+                }
+            });
+
+            const activeSec = document.getElementById(`sec-${tabId}`);
+            if (activeSec) activeSec.classList.remove('hidden');
+
+            const activeTabBtn = document.getElementById(`tab-${tabId}`);
+            if (activeTabBtn) {
+                activeTabBtn.classList.add('bg-holcim-darkblue', 'text-white', 'border-b-2', 'border-green-400');
+                activeTabBtn.classList.remove('hover:bg-sky-800', 'text-sky-100');
+            }
+
+            if (tabId === 'dashboard') {
+                setTimeout(() => {
+                    if (chartEntreprisesObj) chartEntreprisesObj.resize();
+                    if (chartDocumentsObj) chartDocumentsObj.resize();
+                }, 50);
+            }
+        }
+
+        // ==========================================
+        // KPI & ANALYTICS COMPUTATION
+        // ==========================================
+        function updateKPIs() {
+            const total = workerDatabase.length;
+            const hseOk = workerDatabase.filter(w => w.hseValide).length;
+            const pct = total > 0 ? Math.round((hseOk / total) * 100) : 0;
+            
+            const activePeriodCount = workerDatabase.filter(w => getPeriodStatus(w.dateDebut, w.dateFin).code === 'ACTIVE').length;
+            const expiredCount = workerDatabase.filter(w => getPeriodStatus(w.dateDebut, w.dateFin).code === 'EXPIRED' || !w.hseValide).length;
+
+            document.getElementById('kpi-total').innerText = total;
+            document.getElementById('kpi-hse-ok').innerText = hseOk;
+            document.getElementById('kpi-hse-pct').innerText = pct;
+            document.getElementById('kpi-active-period').innerText = activePeriodCount;
+            document.getElementById('kpi-expired').innerText = expiredCount;
+        }
+
+        // ==========================================
+        // EXCEL IMPORTATION ENGINE (SHEETJS)
+        // ==========================================
+        function handleExcelImport(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const firstSheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[firstSheetName];
+                const jsonRows = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+
+                parseAndPreviewExcelRows(jsonRows);
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function loadSampleExcelData() {
+            const sampleData = [
+                { Nom: "KHALDI", Prénom: "Billel", Père: "Rachid", Mère: "Nassima", Entreprise: "SOMACER", CNAS: "2910293847", DateDébut: "01/03/2026", DateFin: "31/03/2026", HSE: "OUI" },
+                { Nom: "DJABALI", Prénom: "Farid", Père: "Hassan", Mère: "Houria", Entreprise: "SARL MEA", CNAS: "3192039485", DateDébut: "10/03/2026", DateFin: "28/03/2026", HSE: "NON" },
+                { Nom: "BENMOHAMED", Prénom: "Khaled", Père: "Tahar", Mère: "Mabrouka", Entreprise: "ORAN ELEVAGE", CNAS: "2988172635", DateDébut: "01/03/2026", DateFin: "31/03/2026", HSE: "OUI" }
+            ];
+            parseAndPreviewExcelRows(sampleData);
+        }
+
+        function parseAndPreviewExcelRows(rows) {
+            pendingExcelParsedData = [];
+
+            rows.forEach((r, idx) => {
+                const nom = r.Nom || r.NOM || r.nom || `AGENT_${idx+1}`;
+                const prenom = r.Prénom || r.PRENOM || r.prenom || "";
+                const pere = r.Père || r.PERE || r.pere || "-";
+                const mere = r.Mère || r.MERE || r.mere || "-";
+                const entreprise = r.Entreprise || r.ENTREPRISE || r.entreprise || "SOUS-TRAITANT";
+                const cnas = r.CNAS || r.cnas || r['N° Social'] || "N/A";
+                
+                const rawStart = r.DateDébut || r.DATE_DEBUT || r.date_debut || TODAY;
+                const rawEnd = r.DateFin || r.DATE_FIN || r.date_fin || "2026-03-31";
+
+                const dateDebut = parseToIsoDate(rawStart);
+                const dateFin = parseToIsoDate(rawEnd);
+
+                const hseRaw = String(r.HSE || r.hse || "").toUpperCase();
+                const hseValide = (hseRaw === 'OUI' || hseRaw === 'TRUE' || hseRaw === '1' || hseRaw === 'OK');
+
+                pendingExcelParsedData.push({
+                    nom: String(nom).toUpperCase().trim(),
+                    prenom: String(prenom).trim(),
+                    pere: String(pere).trim(),
+                    mere: String(mere).trim(),
+                    entreprise: String(entreprise).toUpperCase().trim(),
+                    cnas: String(cnas).trim(),
+                    dateDebut: dateDebut,
+                    dateFin: dateFin,
+                    certMed: false,
+                    cnasDoc: false,
+                    diplomeDoc: false,
+                    hseValide: hseValide
+                });
+            });
+
+            const tbody = document.getElementById('excel-preview-body');
+            tbody.innerHTML = '';
+
+            pendingExcelParsedData.forEach(w => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td class="p-2.5 font-bold text-slate-900">${w.nom}</td>
+                    <td class="p-2.5">${w.prenom}</td>
+                    <td class="p-2.5 text-slate-500">${w.pere} / ${w.mere}</td>
+                    <td class="p-2.5 text-holcim-blue font-semibold">${w.entreprise}</td>
+                    <td class="p-2.5">${w.cnas}</td>
+                    <td class="p-2.5 font-mono">Du ${formatDateFR(w.dateDebut)} au ${formatDateFR(w.dateFin)}</td>
+                    <td class="p-2.5">${w.hseValide ? '<span class="text-emerald-600 font-bold">✅ OUI</span>' : '<span class="text-amber-600 font-bold">⏳ NON</span>'}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            document.getElementById('excel-row-count').innerText = pendingExcelParsedData.length;
+            document.getElementById('excel-preview-container').classList.remove('hidden');
+        }
+
+        function confirmExcelImport() {
+            if (pendingExcelParsedData.length === 0) return;
+
+            pendingExcelParsedData.forEach(w => {
+                w.id = 100 + workerDatabase.length + 1;
+                workerDatabase.unshift(w);
+            });
+
+            alert(`✅ ${pendingExcelParsedData.length} travailleurs importés avec succès depuis le fichier Excel.\n\nToutes les dates ont été formattées au format DD/MM/YYYY.\nVous pouvez maintenant utiliser l'icône 📄 dans le Registre pour joindre leurs documents.`);
+
+            pendingExcelParsedData = [];
+            document.getElementById('excel-preview-container').classList.add('hidden');
+            
+            updateKPIs();
+            refreshCharts();
+            renderWorkerTable();
+            renderPeriodTable();
+            populateCompanySelects();
+            switchTab('registre');
+        }
+
+        // ==========================================
+        // MANUAL DOCUMENT MANAGEMENT PER WORKER (MODAL)
+        // ==========================================
+        function openDocsModal(workerId) {
+            const worker = workerDatabase.find(w => w.id === workerId);
+            if (!worker) return;
+
+            activeModalWorkerId = workerId;
+            document.getElementById('modal-worker-title').innerText = `Agent #${worker.id} : ${worker.nom} ${worker.prenom} (${worker.entreprise})`;
+
+            updateModalDocBadge('doc-status-med', worker.certMed);
+            updateModalDocBadge('doc-status-cnas', worker.cnasDoc);
+            updateModalDocBadge('doc-status-dip', worker.diplomeDoc);
+
+            document.getElementById('modal-docs').classList.remove('hidden');
+        }
+
+        function updateModalDocBadge(elementId, isAttached) {
+            const el = document.getElementById(elementId);
+            if (isAttached) {
+                el.innerText = "✅ Fichier présent";
+                el.className = "text-[10px] px-2 py-0.5 rounded font-bold bg-emerald-100 text-emerald-800";
+            } else {
+                el.innerText = "❌ Non fourni";
+                el.className = "text-[10px] px-2 py-0.5 rounded font-bold bg-rose-100 text-rose-800";
+            }
+        }
+
+        function attachModalDoc(docKey, inputId) {
+            const input = document.getElementById(inputId);
+            if (!activeModalWorkerId) return;
+            const worker = workerDatabase.find(w => w.id === activeModalWorkerId);
+            
+            if (worker && input.files.length > 0) {
+                worker[docKey] = true;
+                if (docKey === 'certMed') updateModalDocBadge('doc-status-med', true);
+                if (docKey === 'cnasDoc') updateModalDocBadge('doc-status-cnas', true);
+                if (docKey === 'diplomeDoc') updateModalDocBadge('doc-status-dip', true);
+
+                refreshCharts();
+                renderWorkerTable();
+            }
+        }
+
+        function closeDocsModal() {
+            document.getElementById('modal-docs').classList.add('hidden');
+            activeModalWorkerId = null;
+        }
+
+        // ==========================================
+        // PERIOD MANAGEMENT LOGIC
+        // ==========================================
+        function populateCompanySelects() {
+            const set = new Set(workerDatabase.map(w => w.entreprise));
+            const select = document.getElementById('batch-company-select');
+            select.innerHTML = '';
+            set.forEach(ent => {
+                const opt = document.createElement('option');
+                opt.value = ent;
+                opt.innerText = ent;
+                select.appendChild(opt);
+            });
+        }
+
+        function applyBatchDates() {
+            const entreprise = document.getElementById('batch-company-select').value;
+            const newStart = parseToIsoDate(document.getElementById('batch-start-date').value);
+            const newEnd = parseToIsoDate(document.getElementById('batch-end-date').value);
+
+            if (!newStart || !newEnd) {
+                alert("Veuillez choisir les deux dates de début et de fin.");
+                return;
+            }
+
+            let count = 0;
+            workerDatabase.forEach(w => {
+                if (w.entreprise === entreprise) {
+                    w.dateDebut = newStart;
+                    w.dateFin = newEnd;
+                    count++;
+                }
+            });
+
+            alert(`✅ La période d'accès pour l'entreprise ${entreprise} a été mise à jour du ${formatDateFR(newStart)} au ${formatDateFR(newEnd)} pour ${count} agents.`);
+            updateKPIs();
+            renderPeriodTable();
+            renderWorkerTable();
+        }
+
+        function renderPeriodTable() {
+            const tbody = document.getElementById('table-period-body');
+            const filterVal = document.getElementById('filter-period-status').value;
+            tbody.innerHTML = '';
+
+            workerDatabase.forEach(w => {
+                const pStatus = getPeriodStatus(w.dateDebut, w.dateFin);
+
+                if (filterVal === 'ACTIVE' && pStatus.code !== 'ACTIVE') return;
+                if (filterVal === 'EXPIRED' && pStatus.code !== 'EXPIRED') return;
+                if (filterVal === 'FUTURE' && pStatus.code !== 'FUTURE') return;
+
+                const isoFin = parseToIsoDate(w.dateFin);
+                const diffDays = Math.ceil((new Date(isoFin) - new Date(TODAY)) / (1000 * 60 * 60 * 24));
+                const daysLabel = diffDays >= 0 ? `${diffDays} jours` : `Expiré (${Math.abs(diffDays)}j)`;
+
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-slate-50 transition";
+                tr.innerHTML = `
+                    <td class="p-3 font-bold text-slate-800">${w.nom} ${w.prenom}</td>
+                    <td class="p-3 font-semibold text-holcim-blue">${w.entreprise}</td>
+                    <td class="p-3 font-mono text-slate-700 font-semibold">${formatDateFR(w.dateDebut)}</td>
+                    <td class="p-3 font-mono text-slate-700 font-semibold">${formatDateFR(w.dateFin)}</td>
+                    <td class="p-3 font-semibold ${diffDays >= 0 ? 'text-slate-700' : 'text-rose-600'}">${daysLabel}</td>
+                    <td class="p-3"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${pStatus.color}">${pStatus.label}</span></td>
+                    <td class="p-3 text-right">
+                        <button onclick="loadWorkerToBadge(${w.id})" class="px-2 py-1 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded text-[10px]">
+                            Badge QR
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // ==========================================
+        // WORKER REGISTRE TABLE RENDERING
+        // ==========================================
+        function renderWorkerTable() {
+            const tbody = document.getElementById('table-workers-body');
+            tbody.innerHTML = '';
+
+            workerDatabase.forEach(w => {
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-slate-50 transition";
+
+                const hseBadge = w.hseValide 
+                    ? `<span class="bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full text-[10px]">✅ HSE Validée</span>`
+                    : `<span class="bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded-full text-[10px]">⏳ Attente HSE</span>`;
+
+                const pStatus = getPeriodStatus(w.dateDebut, w.dateFin);
+
+                const docsSummary = `
+                    <button onclick="openDocsModal(${w.id})" title="Gérer manuellement les documents" class="px-1.5 py-0.5 border border-slate-300 rounded hover:bg-slate-100 flex items-center gap-1 text-[11px]">
+                        <span>${w.certMed ? '🩺' : '❌'}</span>
+                        <span>${w.cnasDoc ? '📄' : '❌'}</span>
+                        <span>${w.diplomeDoc ? '🎓' : '❌'}</span>
+                        <span class="text-holcim-blue font-bold ml-1">✏️</span>
+                    </button>
+                `;
+
+                tr.innerHTML = `
+                    <td class="p-3 font-mono text-slate-500">#${w.id}</td>
+                    <td class="p-3 font-bold text-slate-800">${w.nom} ${w.prenom}</td>
+                    <td class="p-3 text-slate-500">${w.pere} / ${w.mere}</td>
+                    <td class="p-3 font-semibold text-holcim-blue">${w.entreprise}</td>
+                    <td class="p-3 font-mono text-[11px] font-semibold">
+                        ${formatDateFR(w.dateDebut)} → ${formatDateFR(w.dateFin)}
+                        <div class="mt-0.5"><span class="text-[9px] font-bold px-1.5 rounded ${pStatus.color}">${pStatus.label}</span></div>
+                    </td>
+                    <td class="p-3">${docsSummary}</td>
+                    <td class="p-3">${hseBadge}</td>
+                    <td class="p-3 text-right space-x-1">
+                        <button onclick="toggleWorkerHse(${w.id})" class="px-2 py-1 bg-slate-200 hover:bg-slate-300 rounded text-[10px] font-bold text-slate-700">
+                            ${w.hseValide ? 'Invalider HSE' : 'Valider HSE'}
+                        </button>
+                        <button onclick="loadWorkerToBadge(${w.id})" class="px-2 py-1 bg-amber-500 hover:bg-amber-600 rounded text-[10px] font-bold text-white">
+                            Badge 4x4
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function toggleWorkerHse(workerId) {
+            const worker = workerDatabase.find(w => w.id === workerId);
+            if (worker) {
+                worker.hseValide = !worker.hseValide;
+                updateKPIs();
+                refreshCharts();
+                renderWorkerTable();
+            }
+        }
+
+        function loadWorkerToBadge(workerId) {
+            const worker = workerDatabase.find(w => w.id === workerId);
+            if (!worker) return;
+
+            switchTab('nouveau-personnel');
+
+            document.getElementById('input-nom').value = worker.nom;
+            document.getElementById('input-prenom').value = worker.prenom;
+            document.getElementById('input-entreprise').value = worker.entreprise;
+            document.getElementById('input-pere').value = worker.pere;
+            document.getElementById('input-mere').value = worker.mere;
+            document.getElementById('input-cnas-num').value = worker.cnas;
+            document.getElementById('input-date-debut').value = parseToIsoDate(worker.dateDebut);
+            document.getElementById('input-date-fin').value = parseToIsoDate(worker.dateFin);
+            document.getElementById('check-hse').checked = worker.hseValide;
+
+            previewBadgeFromForm();
+        }
+
+        function filterWorkerTable() {
+            const searchVal = document.getElementById('search-worker').value.toLowerCase();
+            const hseVal = document.getElementById('filter-hse').value;
+            const rows = document.getElementById('table-workers-body').getElementsByTagName('tr');
+
+            for (let i = 0; i < rows.length; i++) {
+                const text = rows[i].innerText.toLowerCase();
+                const matchesSearch = text.includes(searchVal);
+                let matchesHse = true;
+                if (hseVal === 'VAL') matchesHse = text.includes('hse validée');
+                if (hseVal === 'PENDING') matchesHse = text.includes('attente hse');
+
+                rows[i].style.display = (matchesSearch && matchesHse) ? '' : 'none';
+            }
+        }
+
+        // ==========================================
+        // WORKER FORM & BADGE PREVIEW LOGIC
+        // ==========================================
+        function updateFileLabel(inputId, labelId) {
+            const input = document.getElementById(inputId);
+            const label = document.getElementById(labelId);
+            if (input.files && input.files.length > 0) {
+                label.innerText = "✅ " + input.files[0].name.substring(0, 14) + "...";
+                label.classList.add('text-emerald-700', 'font-bold');
+            }
+        }
+
+        function previewBadgeFromForm() {
+            const nom = document.getElementById('input-nom').value.trim() || "NOM";
+            const prenom = document.getElementById('input-prenom').value.trim() || "PRÉNOM";
+            const entreprise = document.getElementById('input-entreprise').value.trim() || "ENTREPRISE";
+            const dateDebut = document.getElementById('input-date-debut').value;
+            const dateFin = document.getElementById('input-date-fin').value;
+            const hseValide = document.getElementById('check-hse').checked;
+
+            const formattedStart = formatDateFR(dateDebut);
+            const formattedEnd = formatDateFR(dateFin);
+
+            document.getElementById('badge-worker-name').innerText = `${nom.toUpperCase()} ${prenom}`;
+            document.getElementById('badge-worker-entreprise').innerText = entreprise.toUpperCase();
+            document.getElementById('badge-worker-period').innerText = `Du ${formattedStart} au ${formattedEnd}`;
+
+            const overlay = document.getElementById('badge-lock-overlay');
+            const hseTag = document.getElementById('badge-hse-tag');
+            const lockTitle = document.getElementById('lock-reason-title');
+            const lockDesc = document.getElementById('lock-reason-desc');
+
+            const pStatus = getPeriodStatus(dateDebut, dateFin);
+
+            let isAccessBlocked = false;
+            let rawText = "";
+
+            if (!hseValide) {
+                isAccessBlocked = true;
+                lockTitle.innerText = "INDUCTION HSE ABSENTE";
+                lockDesc.innerText = "Formation sécurité obligatoire";
+                hseTag.innerText = "HSE BLOQUÉ";
+                hseTag.className = "text-[6px] font-bold text-rose-600 uppercase tracking-widest";
+            } else if (pStatus.code !== 'ACTIVE') {
+                isAccessBlocked = true;
+                lockTitle.innerText = "PÉRIODE EXPIRÉE / INVALIDE";
+                lockDesc.innerText = `Autorisation : ${pStatus.label}`;
+                hseTag.innerText = "PÉRIODE INVALIDE";
+                hseTag.className = "text-[6px] font-bold text-rose-600 uppercase tracking-widest";
+            } else {
+                isAccessBlocked = false;
+                hseTag.innerText = "ACCÈS AUTORISÉ";
+                hseTag.className = "text-[6px] font-bold text-emerald-700 uppercase tracking-widest";
+            }
+
+            if (isAccessBlocked) {
+                overlay.classList.remove('hidden');
+                rawText = `HOLCIM-OGGAZ\nNom:${nom} ${prenom}\nEnt:${entreprise}\nSTATUT:ACCES_REFUSE`;
+            } else {
+                overlay.classList.add('hidden');
+                rawText = `HOLCIM-OGGAZ\nNom:${nom} ${prenom}\nEnt:${entreprise}\nDates:${formattedStart}-${formattedEnd}\nHSE:OK`;
+            }
+
+            updateQrCode(rawText);
+            document.getElementById('qr-raw-output').innerText = rawText.replace(/\n/g, ' | ');
+        }
+
+        function handleFormSubmit() {
+            const nom = document.getElementById('input-nom').value.trim();
+            const prenom = document.getElementById('input-prenom').value.trim();
+            const entreprise = document.getElementById('input-entreprise').value.trim();
+            const dateDebut = parseToIsoDate(document.getElementById('input-date-debut').value);
+            const dateFin = parseToIsoDate(document.getElementById('input-date-fin').value);
+            const hseValide = document.getElementById('check-hse').checked;
+
+            if (!nom || !prenom || !entreprise || !dateDebut || !dateFin) {
+                alert("Veuillez remplir au minimum le Nom, Prénom, Entreprise et la Période d'autorisation.");
+                return;
+            }
+
+            const newWorker = {
+                id: 100 + workerDatabase.length + 1,
+                nom: nom.toUpperCase(),
+                prenom: prenom,
+                pere: document.getElementById('input-pere').value.trim() || "-",
+                mere: document.getElementById('input-mere').value.trim() || "-",
+                dateNaiss: parseToIsoDate(document.getElementById('input-date-naiss').value) || "-",
+                lieuNaiss: document.getElementById('input-lieu-naiss').value || "-",
+                adresse: document.getElementById('input-adresse').value || "-",
+                tel: document.getElementById('input-tel').value || "-",
+                entreprise: entreprise.toUpperCase(),
+                cnas: document.getElementById('input-cnas-num').value.trim() || "N/A",
+                dateDebut: dateDebut,
+                dateFin: dateFin,
+                certMed: document.getElementById('file-cert').files.length > 0,
+                cnasDoc: document.getElementById('file-cnas').files.length > 0,
+                diplomeDoc: document.getElementById('file-dip').files.length > 0,
+                hseValide: hseValide
+            };
+
+            workerDatabase.unshift(newWorker);
+            
+            updateKPIs();
+            refreshCharts();
+            renderWorkerTable();
+            renderPeriodTable();
+            populateCompanySelects();
+            previewBadgeFromForm();
+
+            alert(`✅ Agent ${nom} ${prenom} (${entreprise}) ajouté avec succès au registre Holcim Oggaz.`);
+        }
+
+        function printSticker() {
+            const hseValide = document.getElementById('check-hse').checked;
+            const dateDebut = document.getElementById('input-date-debut').value;
+            const dateFin = document.getElementById('input-date-fin').value;
+            const pStatus = getPeriodStatus(dateDebut, dateFin);
+
+            if (!hseValide || pStatus.code !== 'ACTIVE') {
+                alert("⛔ IMPRESSION IMPOSSIBLE\n\nL'accès est actuellement refusé (Induction HSE manquante ou période d'autorisation expirée). Réglementation Holcim d'entrée d'usine.");
+                return;
+            }
+            window.print();
+        }
+
+        // ==========================================
+        // QR CODE RENDERING LOGIC
+        // ==========================================
+        function initQrCodeCanvas() {
+            const container = document.getElementById('qrcode-container');
+            container.innerHTML = '';
+            qrCodeObj = new QRCode(container, {
+                text: "HOLCIM-OGGAZ|DEMO|ACCES_VALIDE",
+                width: 68,
+                height: 68,
+                colorDark: "#000000",
+                colorLight: "#ffffff",
+                correctLevel: QRCode.CorrectLevel.H
+            });
+        }
+
+        function updateQrCode(text) {
+            if (qrCodeObj) {
+                qrCodeObj.clear();
+                qrCodeObj.makeCode(text);
+            }
+        }
+
+        // ==========================================
+        // CHART.JS INITIALIZATION
+        // ==========================================
+        function initCharts() {
+            const entreprisesMap = {};
+            workerDatabase.forEach(w => {
+                if (!entreprisesMap[w.entreprise]) entreprisesMap[w.entreprise] = { ok: 0, pending: 0 };
+                if (w.hseValide) entreprisesMap[w.entreprise].ok++;
+                else entreprisesMap[w.entreprise].pending++;
+            });
+
+            const labelsEnt = Object.keys(entreprisesMap);
+
+            const ctx1 = document.getElementById('chartEntreprises').getContext('2d');
+            chartEntreprisesObj = new Chart(ctx1, {
+                type: 'bar',
+                data: {
+                    labels: labelsEnt,
+                    datasets: [
+                        { label: 'HSE Validé', data: labelsEnt.map(k => entreprisesMap[k].ok), backgroundColor: '#00A859' },
+                        { label: 'En Attente HSE', data: labelsEnt.map(k => entreprisesMap[k].pending), backgroundColor: '#F59E0B' }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, ticks: { stepSize: 1 } } },
+                    plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } }
+                }
+            });
+
+            const certCount = workerDatabase.filter(w => w.certMed).length;
+            const cnasCount = workerDatabase.filter(w => w.cnasDoc).length;
+            const dipCount = workerDatabase.filter(w => w.diplomeDoc).length;
+
+            const ctx2 = document.getElementById('chartDocuments').getContext('2d');
+            chartDocumentsObj = new Chart(ctx2, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Certificats Médicaux OK', 'Attestations CNAS OK', 'Diplômes / Qualif OK'],
+                    datasets: [{
+                        data: [certCount, cnasCount, dipCount],
+                        backgroundColor: ['#005A9C', '#0284C7', '#38BDF8']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } }
+                }
+            });
+        }
+
+        function refreshCharts() {
+            if (!chartEntreprisesObj || !chartDocumentsObj) return;
+
+            const entreprisesMap = {};
+            workerDatabase.forEach(w => {
+                if (!entreprisesMap[w.entreprise]) entreprisesMap[w.entreprise] = { ok: 0, pending: 0 };
+                if (w.hseValide) entreprisesMap[w.entreprise].ok++;
+                else entreprisesMap[w.entreprise].pending++;
+            });
+
+            const labelsEnt = Object.keys(entreprisesMap);
+            chartEntreprisesObj.data.labels = labelsEnt;
+            chartEntreprisesObj.data.datasets[0].data = labelsEnt.map(k => entreprisesMap[k].ok);
+            chartEntreprisesObj.data.datasets[1].data = labelsEnt.map(k => entreprisesMap[k].pending);
+            chartEntreprisesObj.update();
+
+            const certCount = workerDatabase.filter(w => w.certMed).length;
+            const cnasCount = workerDatabase.filter(w => w.cnasDoc).length;
+            const dipCount = workerDatabase.filter(w => w.diplomeDoc).length;
+
+            chartDocumentsObj.data.datasets[0].data = [certCount, cnasCount, dipCount];
+            chartDocumentsObj.update();
+        }
+    </script>
+</body>
+</html>
